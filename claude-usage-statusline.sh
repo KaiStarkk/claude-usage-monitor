@@ -9,6 +9,7 @@
 #
 # Configuration (environment variables):
 #   CLAUDE_USAGE_BAR_WIDTH  - Width of progress bars (default: 30)
+#   CLAUDE_USAGE_BAR_STYLE  - Bar style: ascii, unicode, braille (default: unicode)
 #   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 600)
 #   CLAUDE_CREDENTIALS_FILE - Path to credentials (default: ~/.claude/.credentials.json)
 
@@ -16,6 +17,7 @@ set -euo pipefail
 
 # Configuration
 BAR_WIDTH="${CLAUDE_USAGE_BAR_WIDTH:-30}"
+BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
 CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-600}"
 CACHE_FILE="/tmp/claude-usage-statusline"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
@@ -24,7 +26,7 @@ CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 input=$(cat)
 
 # Create progress bar with time marker
-# Args: usage%, time_progress%, width, label
+# Styles: ascii (|###...|), unicode (█░│), braille (⣿⡀)
 make_bar() {
   local usage=$1
   local time_pct=$2
@@ -41,16 +43,54 @@ make_bar() {
   [[ $time_pos -lt 0 ]] && time_pos=0
 
   local bar=""
-  for ((i=0; i<width; i++)); do
-    if [[ $i -eq $time_pos ]]; then
-      bar+="│"  # Time marker showing position in window
-    elif [[ $i -lt $filled ]]; then
-      bar+="█"  # Usage consumed
-    else
-      bar+="░"  # Remaining allowance
-    fi
-  done
-  echo "$label[$bar]"
+
+  case "$BAR_STYLE" in
+    ascii)
+      for ((i=0; i<width; i++)); do
+        if [[ $i -eq $time_pos ]]; then
+          bar+="|"
+        elif [[ $i -lt $filled ]]; then
+          bar+="#"
+        else
+          bar+="."
+        fi
+      done
+      echo "$label[$bar]"
+      ;;
+    braille)
+      # Braille uses 8 levels per character: ⡀⣀⣄⣤⣦⣶⣷⣿
+      local total_dots=$((width * 8))
+      local filled_dots=$((usage * total_dots / 100))
+      for ((i=0; i<width; i++)); do
+        local char_dots=$((filled_dots - i * 8))
+        [[ $char_dots -lt 0 ]] && char_dots=0
+        [[ $char_dots -gt 8 ]] && char_dots=8
+        case $char_dots in
+          0) bar+="⡀" ;;
+          1) bar+="⣀" ;;
+          2) bar+="⣄" ;;
+          3) bar+="⣤" ;;
+          4) bar+="⣦" ;;
+          5) bar+="⣶" ;;
+          6) bar+="⣷" ;;
+          7|8) bar+="⣿" ;;
+        esac
+      done
+      echo "$label$bar"
+      ;;
+    unicode|*)
+      for ((i=0; i<width; i++)); do
+        if [[ $i -eq $time_pos ]]; then
+          bar+="│"  # Time marker showing position in window
+        elif [[ $i -lt $filled ]]; then
+          bar+="█"  # Usage consumed
+        else
+          bar+="░"  # Remaining allowance
+        fi
+      done
+      echo "$label[$bar]"
+      ;;
+  esac
 }
 
 # Check cache first
