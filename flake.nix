@@ -33,6 +33,7 @@
         {
           claude-usage-statusline = wrapScript "claude-usage-statusline" ./claude-usage-statusline.sh;
           claude-usage-bar = wrapScript "claude-usage-bar" ./claude-usage-bar.sh;
+          claude-usage-cycle = wrapScript "claude-usage-cycle" ./claude-usage-cycle.sh;
           claude-model-check = wrapScript "claude-model-check" ./claude-model-check.sh;
 
           default = pkgs.symlinkJoin {
@@ -40,6 +41,7 @@
             paths = [
               self.packages.${system}.claude-usage-statusline
               self.packages.${system}.claude-usage-bar
+              self.packages.${system}.claude-usage-cycle
               self.packages.${system}.claude-model-check
             ];
           };
@@ -86,6 +88,7 @@
         claude-usage-monitor = self.packages.${prev.system}.default;
         claude-usage-statusline = self.packages.${prev.system}.claude-usage-statusline;
         claude-usage-bar = self.packages.${prev.system}.claude-usage-bar;
+        claude-usage-cycle = self.packages.${prev.system}.claude-usage-cycle;
         claude-model-check = self.packages.${prev.system}.claude-model-check;
       };
     };

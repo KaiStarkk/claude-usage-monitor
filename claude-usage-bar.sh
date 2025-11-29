@@ -10,20 +10,42 @@
 # Configuration (environment variables):
 #   CLAUDE_USAGE_BAR_WIDTH  - Width of progress bars (default: 8)
 #   CLAUDE_USAGE_BAR_STYLE  - Bar style: ascii, unicode, braille (default: unicode)
+#   CLAUDE_USAGE_DISPLAY    - Display mode: all, 5h, 7d, minimal (default: all)
+#   CLAUDE_USAGE_FORMAT     - Format: bars, percent, time (default: bars)
 #   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 300)
 #   CLAUDE_CREDENTIALS_FILE - Path to credentials (default: ~/.claude/.credentials.json)
+#
+# Config file: ~/.config/claude-usage/config (overrides env vars)
+#   style=unicode
+#   display=all
+#   format=bars
 
 set -euo pipefail
 
-# Configuration
+# Configuration defaults
 BAR_WIDTH="${CLAUDE_USAGE_BAR_WIDTH:-8}"
 BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
+DISPLAY_MODE="${CLAUDE_USAGE_DISPLAY:-all}"
+FORMAT="${CLAUDE_USAGE_FORMAT:-bars}"
 CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-300}"
 CACHE_FILE="/tmp/claude-usage-bar-cache"
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-usage/config"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 
+# Load config file if exists (overrides env vars)
+if [[ -f "$CONFIG_FILE" ]]; then
+  while IFS='=' read -r key value; do
+    [[ -z "$key" || "$key" =~ ^# ]] && continue
+    case "$key" in
+      style) BAR_STYLE="$value" ;;
+      display) DISPLAY_MODE="$value" ;;
+      format) FORMAT="$value" ;;
+      width) BAR_WIDTH="$value" ;;
+    esac
+  done < "$CONFIG_FILE"
+fi
+
 # Create progress bar with time marker
-# Styles: ascii (|###...|), unicode (█░│), braille (⣿⡀)
 make_bar() {
   local usage=$1
   local time_pct=$2
@@ -54,7 +76,6 @@ make_bar() {
       echo "$label[$bar]"
       ;;
     braille)
-      # Braille uses 8 levels per character: ⡀⣀⣄⣤⣦⣶⣷⣿
       local total_dots=$((width * 8))
       local filled_dots=$((usage * total_dots / 100))
       for ((i=0; i<width; i++)); do
@@ -89,17 +110,39 @@ make_bar() {
   esac
 }
 
+# Format time remaining
+format_time_remaining() {
+  local reset_time=$1
+  local now=$(date +%s)
+  local reset_epoch=$(date -d "$reset_time" +%s 2>/dev/null || echo 0)
+  local remaining=$((reset_epoch - now))
+
+  if [[ $remaining -lt 0 ]]; then
+    echo "now"
+  elif [[ $remaining -lt 3600 ]]; then
+    echo "$((remaining / 60))m"
+  elif [[ $remaining -lt 86400 ]]; then
+    echo "$((remaining / 3600))h"
+  else
+    echo "$((remaining / 86400))d"
+  fi
+}
+
 # Output error JSON
 error_json() {
   echo "{\"text\": \"?\", \"tooltip\": \"$1\", \"class\": \"error\"}"
   exit 0
 }
 
-# Check cache first
+# Check cache first (but not if config changed)
+config_hash=""
+[[ -f "$CONFIG_FILE" ]] && config_hash=$(md5sum "$CONFIG_FILE" 2>/dev/null | cut -d' ' -f1)
+cache_valid=false
 if [[ -f "$CACHE_FILE" ]]; then
   cache_age=$(($(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)))
-  if [[ $cache_age -lt $CACHE_TTL ]]; then
-    cat "$CACHE_FILE"
+  cached_hash=$(head -1 "$CACHE_FILE" 2>/dev/null | grep "^#hash:" | cut -d: -f2)
+  if [[ $cache_age -lt $CACHE_TTL && "$cached_hash" == "$config_hash" ]]; then
+    tail -n +2 "$CACHE_FILE"
     exit 0
   fi
 fi
@@ -146,9 +189,11 @@ if [[ -n "$five_hour_reset" && "$five_hour_reset" != "null" ]]; then
   [[ $five_hour_time_pct -lt 0 ]] && five_hour_time_pct=0
   [[ $five_hour_time_pct -gt 100 ]] && five_hour_time_pct=100
   five_hour_reset_fmt=$(date -d "$five_hour_reset" "+%H:%M" 2>/dev/null || echo "--:--")
+  five_hour_remaining=$(format_time_remaining "$five_hour_reset")
 else
   five_hour_time_pct=0
   five_hour_reset_fmt="--:--"
+  five_hour_remaining="--"
 fi
 
 if [[ -n "$seven_day_reset" && "$seven_day_reset" != "null" ]]; then
@@ -159,9 +204,11 @@ if [[ -n "$seven_day_reset" && "$seven_day_reset" != "null" ]]; then
   [[ $seven_day_time_pct -lt 0 ]] && seven_day_time_pct=0
   [[ $seven_day_time_pct -gt 100 ]] && seven_day_time_pct=100
   seven_day_reset_fmt=$(date -d "$seven_day_reset" "+%b %d" 2>/dev/null || echo "--")
+  seven_day_remaining=$(format_time_remaining "$seven_day_reset")
 else
   seven_day_time_pct=0
   seven_day_reset_fmt="--"
+  seven_day_remaining="--"
 fi
 
 # Build progress bars
@@ -169,7 +216,33 @@ bar_5h=$(make_bar "$five_hour" "$five_hour_time_pct" "$BAR_WIDTH" "5h")
 bar_7d=$(make_bar "$seven_day" "$seven_day_time_pct" "$BAR_WIDTH" "7d")
 bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "S")
 
-text="$bar_5h $bar_7d $bar_sn"
+# Build text based on display mode and format
+case "$FORMAT" in
+  percent)
+    case "$DISPLAY_MODE" in
+      5h) text="5h:${five_hour}%" ;;
+      7d) text="7d:${seven_day}%" ;;
+      minimal) text="${five_hour}/${seven_day}%" ;;
+      all|*) text="5h:${five_hour}% 7d:${seven_day}% S:${sonnet}%" ;;
+    esac
+    ;;
+  time)
+    case "$DISPLAY_MODE" in
+      5h) text="5h:${five_hour_remaining}" ;;
+      7d) text="7d:${seven_day_remaining}" ;;
+      minimal) text="${five_hour_remaining}/${seven_day_remaining}" ;;
+      all|*) text="5h:${five_hour_remaining} 7d:${seven_day_remaining}" ;;
+    esac
+    ;;
+  bars|*)
+    case "$DISPLAY_MODE" in
+      5h) text="$bar_5h" ;;
+      7d) text="$bar_7d" ;;
+      minimal) text="${five_hour}%|${seven_day}%" ;;
+      all|*) text="$bar_5h $bar_7d $bar_sn" ;;
+    esac
+    ;;
+esac
 
 # Determine class based on usage thresholds
 if [[ $five_hour -ge 80 ]] || [[ $seven_day -ge 80 ]]; then
@@ -180,14 +253,18 @@ else
   class="normal"
 fi
 
-# Build tooltip
+# Build tooltip with current config info
 tooltip="Claude Usage\\n━━━━━━━━━━━━━━━━━━━━\\n"
-tooltip+="5hr: ${five_hour_full}% (resets $five_hour_reset_fmt)\\n"
-tooltip+="7d:  ${seven_day_full}% (resets $seven_day_reset_fmt)\\n"
+tooltip+="5hr: ${five_hour_full}% (resets $five_hour_reset_fmt, ${five_hour_remaining})\\n"
+tooltip+="7d:  ${seven_day_full}% (resets $seven_day_reset_fmt, ${seven_day_remaining})\\n"
 tooltip+="Sonnet 7d: ${sonnet_full}%\\n\\n"
-tooltip+="█=usage │=time ░=remaining"
+tooltip+="Style: $BAR_STYLE | Display: $DISPLAY_MODE | Format: $FORMAT\\n"
+tooltip+="Scroll to change style, Ctrl+Scroll for display"
 
 # Output JSON
 result="{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"$class\"}"
-echo "$result" > "$CACHE_FILE"
+{
+  echo "#hash:$config_hash"
+  echo "$result"
+} > "$CACHE_FILE"
 echo "$result"
