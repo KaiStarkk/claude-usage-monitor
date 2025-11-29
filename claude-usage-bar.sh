@@ -28,7 +28,7 @@ BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
 DISPLAY_MODE="${CLAUDE_USAGE_DISPLAY:-all}"
 FORMAT="${CLAUDE_USAGE_FORMAT:-bars}"
 CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-300}"
-CACHE_FILE="/tmp/claude-usage-bar-cache"
+API_CACHE_FILE="/tmp/claude-usage-api-cache"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-usage/config"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 
@@ -134,137 +134,141 @@ error_json() {
   exit 0
 }
 
-# Check cache first (but not if config changed)
-config_hash=""
-[[ -f "$CONFIG_FILE" ]] && config_hash=$(md5sum "$CONFIG_FILE" 2>/dev/null | cut -d' ' -f1)
-cache_valid=false
-if [[ -f "$CACHE_FILE" ]]; then
-  cache_age=$(($(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)))
-  cached_hash=$(head -1 "$CACHE_FILE" 2>/dev/null | grep "^#hash:" | cut -d: -f2)
-  if [[ $cache_age -lt $CACHE_TTL && "$cached_hash" == "$config_hash" ]]; then
-    tail -n +2 "$CACHE_FILE"
-    exit 0
+# Render output from API data
+render_output() {
+  local response="$1"
+
+  # Parse usage values
+  five_hour=$(echo "$response" | jq -r '.five_hour.utilization // 0' | cut -d. -f1)
+  seven_day=$(echo "$response" | jq -r '.seven_day.utilization // 0' | cut -d. -f1)
+  sonnet=$(echo "$response" | jq -r '.seven_day_sonnet.utilization // 0' | cut -d. -f1)
+  five_hour_full=$(echo "$response" | jq -r '.five_hour.utilization // 0')
+  seven_day_full=$(echo "$response" | jq -r '.seven_day.utilization // 0')
+  sonnet_full=$(echo "$response" | jq -r '.seven_day_sonnet.utilization // 0')
+  five_hour_reset=$(echo "$response" | jq -r '.five_hour.resets_at // empty')
+  seven_day_reset=$(echo "$response" | jq -r '.seven_day.resets_at // empty')
+
+  # Calculate time progress through windows
+  now=$(date +%s)
+
+  if [[ -n "$five_hour_reset" && "$five_hour_reset" != "null" ]]; then
+    reset_epoch=$(date -d "$five_hour_reset" +%s 2>/dev/null || echo 0)
+    secs_until_reset=$((reset_epoch - now))
+    secs_into_window=$((18000 - secs_until_reset))
+    five_hour_time_pct=$((secs_into_window * 100 / 18000))
+    [[ $five_hour_time_pct -lt 0 ]] && five_hour_time_pct=0
+    [[ $five_hour_time_pct -gt 100 ]] && five_hour_time_pct=100
+    five_hour_reset_fmt=$(date -d "$five_hour_reset" "+%H:%M" 2>/dev/null || echo "--:--")
+    five_hour_remaining=$(format_time_remaining "$five_hour_reset")
+  else
+    five_hour_time_pct=0
+    five_hour_reset_fmt="--:--"
+    five_hour_remaining="--"
+  fi
+
+  if [[ -n "$seven_day_reset" && "$seven_day_reset" != "null" ]]; then
+    reset_epoch=$(date -d "$seven_day_reset" +%s 2>/dev/null || echo 0)
+    secs_until_reset=$((reset_epoch - now))
+    secs_into_window=$((604800 - secs_until_reset))
+    seven_day_time_pct=$((secs_into_window * 100 / 604800))
+    [[ $seven_day_time_pct -lt 0 ]] && seven_day_time_pct=0
+    [[ $seven_day_time_pct -gt 100 ]] && seven_day_time_pct=100
+    seven_day_reset_fmt=$(date -d "$seven_day_reset" "+%b %d" 2>/dev/null || echo "--")
+    seven_day_remaining=$(format_time_remaining "$seven_day_reset")
+  else
+    seven_day_time_pct=0
+    seven_day_reset_fmt="--"
+    seven_day_remaining="--"
+  fi
+
+  # Build progress bars
+  bar_5h=$(make_bar "$five_hour" "$five_hour_time_pct" "$BAR_WIDTH" "5h")
+  bar_7d=$(make_bar "$seven_day" "$seven_day_time_pct" "$BAR_WIDTH" "7d")
+  bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "S")
+
+  # Build text based on display mode and format
+  case "$FORMAT" in
+    percent)
+      case "$DISPLAY_MODE" in
+        5h) text="5h:${five_hour}%" ;;
+        7d) text="7d:${seven_day}%" ;;
+        minimal) text="${five_hour}/${seven_day}%" ;;
+        all|*) text="5h:${five_hour}% 7d:${seven_day}% S:${sonnet}%" ;;
+      esac
+      ;;
+    time)
+      case "$DISPLAY_MODE" in
+        5h) text="5h:${five_hour_remaining}" ;;
+        7d) text="7d:${seven_day_remaining}" ;;
+        minimal) text="${five_hour_remaining}/${seven_day_remaining}" ;;
+        all|*) text="5h:${five_hour_remaining} 7d:${seven_day_remaining}" ;;
+      esac
+      ;;
+    bars|*)
+      case "$DISPLAY_MODE" in
+        5h) text="$bar_5h" ;;
+        7d) text="$bar_7d" ;;
+        minimal) text="${five_hour}%|${seven_day}%" ;;
+        all|*) text="$bar_5h $bar_7d $bar_sn" ;;
+      esac
+      ;;
+  esac
+
+  # Determine class based on usage thresholds
+  if [[ $five_hour -ge 80 ]] || [[ $seven_day -ge 80 ]]; then
+    class="critical"
+  elif [[ $five_hour -ge 50 ]] || [[ $seven_day -ge 50 ]]; then
+    class="warning"
+  else
+    class="normal"
+  fi
+
+  # Build tooltip with current config info
+  tooltip="Claude Usage\\n━━━━━━━━━━━━━━━━━━━━\\n"
+  tooltip+="5hr: ${five_hour_full}% (resets $five_hour_reset_fmt, ${five_hour_remaining})\\n"
+  tooltip+="7d:  ${seven_day_full}% (resets $seven_day_reset_fmt, ${seven_day_remaining})\\n"
+  tooltip+="Sonnet 7d: ${sonnet_full}%\\n\\n"
+  tooltip+="Style: $BAR_STYLE | Display: $DISPLAY_MODE | Format: $FORMAT\\n"
+  tooltip+="Scroll=style, Mid=display, Right=refresh, Left=web"
+
+  echo "{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"$class\"}"
+}
+
+# Check API cache - use cached API data if fresh enough
+response=""
+if [[ -f "$API_CACHE_FILE" ]]; then
+  cache_age=$(($(date +%s) - $(stat -c %Y "$API_CACHE_FILE" 2>/dev/null || echo 0)))
+  if [[ $cache_age -lt $CACHE_TTL ]]; then
+    response=$(cat "$API_CACHE_FILE" 2>/dev/null)
   fi
 fi
 
-# Verify credentials exist
-if [[ ! -f "$CREDS_FILE" ]]; then
-  error_json "Claude credentials not found"
+# Fetch fresh API data if cache is stale or missing
+if [[ -z "$response" ]]; then
+  # Verify credentials exist
+  if [[ ! -f "$CREDS_FILE" ]]; then
+    error_json "Claude credentials not found"
+  fi
+
+  # Extract OAuth token
+  token=$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS_FILE" 2>/dev/null)
+  if [[ -z "$token" ]]; then
+    error_json "No OAuth token found"
+  fi
+
+  # Fetch usage data from Anthropic API
+  response=$(curl -s --max-time 10 \
+    -H "Authorization: Bearer $token" \
+    -H "anthropic-beta: oauth-2025-04-20" \
+    "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
+
+  if [[ -z "$response" ]] || echo "$response" | jq -e '.error' >/dev/null 2>&1; then
+    error_json "Failed to fetch usage data"
+  fi
+
+  # Cache the API response
+  echo "$response" > "$API_CACHE_FILE"
 fi
 
-# Extract OAuth token
-token=$(jq -r '.claudeAiOauth.accessToken // empty' "$CREDS_FILE" 2>/dev/null)
-if [[ -z "$token" ]]; then
-  error_json "No OAuth token found"
-fi
-
-# Fetch usage data from Anthropic API
-response=$(curl -s --max-time 10 \
-  -H "Authorization: Bearer $token" \
-  -H "anthropic-beta: oauth-2025-04-20" \
-  "https://api.anthropic.com/api/oauth/usage" 2>/dev/null)
-
-if [[ -z "$response" ]] || echo "$response" | jq -e '.error' >/dev/null 2>&1; then
-  error_json "Failed to fetch usage data"
-fi
-
-# Parse usage values
-five_hour=$(echo "$response" | jq -r '.five_hour.utilization // 0' | cut -d. -f1)
-seven_day=$(echo "$response" | jq -r '.seven_day.utilization // 0' | cut -d. -f1)
-sonnet=$(echo "$response" | jq -r '.seven_day_sonnet.utilization // 0' | cut -d. -f1)
-five_hour_full=$(echo "$response" | jq -r '.five_hour.utilization // 0')
-seven_day_full=$(echo "$response" | jq -r '.seven_day.utilization // 0')
-sonnet_full=$(echo "$response" | jq -r '.seven_day_sonnet.utilization // 0')
-five_hour_reset=$(echo "$response" | jq -r '.five_hour.resets_at // empty')
-seven_day_reset=$(echo "$response" | jq -r '.seven_day.resets_at // empty')
-
-# Calculate time progress through windows
-now=$(date +%s)
-
-if [[ -n "$five_hour_reset" && "$five_hour_reset" != "null" ]]; then
-  reset_epoch=$(date -d "$five_hour_reset" +%s 2>/dev/null || echo 0)
-  secs_until_reset=$((reset_epoch - now))
-  secs_into_window=$((18000 - secs_until_reset))
-  five_hour_time_pct=$((secs_into_window * 100 / 18000))
-  [[ $five_hour_time_pct -lt 0 ]] && five_hour_time_pct=0
-  [[ $five_hour_time_pct -gt 100 ]] && five_hour_time_pct=100
-  five_hour_reset_fmt=$(date -d "$five_hour_reset" "+%H:%M" 2>/dev/null || echo "--:--")
-  five_hour_remaining=$(format_time_remaining "$five_hour_reset")
-else
-  five_hour_time_pct=0
-  five_hour_reset_fmt="--:--"
-  five_hour_remaining="--"
-fi
-
-if [[ -n "$seven_day_reset" && "$seven_day_reset" != "null" ]]; then
-  reset_epoch=$(date -d "$seven_day_reset" +%s 2>/dev/null || echo 0)
-  secs_until_reset=$((reset_epoch - now))
-  secs_into_window=$((604800 - secs_until_reset))
-  seven_day_time_pct=$((secs_into_window * 100 / 604800))
-  [[ $seven_day_time_pct -lt 0 ]] && seven_day_time_pct=0
-  [[ $seven_day_time_pct -gt 100 ]] && seven_day_time_pct=100
-  seven_day_reset_fmt=$(date -d "$seven_day_reset" "+%b %d" 2>/dev/null || echo "--")
-  seven_day_remaining=$(format_time_remaining "$seven_day_reset")
-else
-  seven_day_time_pct=0
-  seven_day_reset_fmt="--"
-  seven_day_remaining="--"
-fi
-
-# Build progress bars
-bar_5h=$(make_bar "$five_hour" "$five_hour_time_pct" "$BAR_WIDTH" "5h")
-bar_7d=$(make_bar "$seven_day" "$seven_day_time_pct" "$BAR_WIDTH" "7d")
-bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "S")
-
-# Build text based on display mode and format
-case "$FORMAT" in
-  percent)
-    case "$DISPLAY_MODE" in
-      5h) text="5h:${five_hour}%" ;;
-      7d) text="7d:${seven_day}%" ;;
-      minimal) text="${five_hour}/${seven_day}%" ;;
-      all|*) text="5h:${five_hour}% 7d:${seven_day}% S:${sonnet}%" ;;
-    esac
-    ;;
-  time)
-    case "$DISPLAY_MODE" in
-      5h) text="5h:${five_hour_remaining}" ;;
-      7d) text="7d:${seven_day_remaining}" ;;
-      minimal) text="${five_hour_remaining}/${seven_day_remaining}" ;;
-      all|*) text="5h:${five_hour_remaining} 7d:${seven_day_remaining}" ;;
-    esac
-    ;;
-  bars|*)
-    case "$DISPLAY_MODE" in
-      5h) text="$bar_5h" ;;
-      7d) text="$bar_7d" ;;
-      minimal) text="${five_hour}%|${seven_day}%" ;;
-      all|*) text="$bar_5h $bar_7d $bar_sn" ;;
-    esac
-    ;;
-esac
-
-# Determine class based on usage thresholds
-if [[ $five_hour -ge 80 ]] || [[ $seven_day -ge 80 ]]; then
-  class="critical"
-elif [[ $five_hour -ge 50 ]] || [[ $seven_day -ge 50 ]]; then
-  class="warning"
-else
-  class="normal"
-fi
-
-# Build tooltip with current config info
-tooltip="Claude Usage\\n━━━━━━━━━━━━━━━━━━━━\\n"
-tooltip+="5hr: ${five_hour_full}% (resets $five_hour_reset_fmt, ${five_hour_remaining})\\n"
-tooltip+="7d:  ${seven_day_full}% (resets $seven_day_reset_fmt, ${seven_day_remaining})\\n"
-tooltip+="Sonnet 7d: ${sonnet_full}%\\n\\n"
-tooltip+="Style: $BAR_STYLE | Display: $DISPLAY_MODE | Format: $FORMAT\\n"
-tooltip+="Scroll to change style, Ctrl+Scroll for display"
-
-# Output JSON
-result="{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"$class\"}"
-{
-  echo "#hash:$config_hash"
-  echo "$result"
-} > "$CACHE_FILE"
-echo "$result"
+# Render and output
+render_output "$response"
