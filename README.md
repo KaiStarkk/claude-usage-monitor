@@ -3,11 +3,19 @@
 Display your Claude Pro/Max subscription usage in your terminal statusline or desktop bar.
 
 ```
-5h[████████│░░░░░░░░░░░░░░░░░░░░░] 7d[████████░░░░░░░░░░░│░░░░░░░░░] S[█░░░░░░░░░░░░░░░░░░│░░░░░░░░░]
+# Unicode (default)
+5h[████│░░░░░░░] 7d[██│░░░░░░░░] S[│░░░░░░░░░░]
+
+# ASCII (for limited font support)
+5h[###|........] 7d[##|.........] S[|...........]
+
+# Braille (compact, no time marker)
+5h⣿⣿⣿⣤⡀⡀⡀⡀ 7d⣿⣿⣀⡀⡀⡀⡀⡀ S⣀⡀⡀⡀⡀⡀⡀⡀
 ```
 
 **Features:**
-- ASCII progress bars showing usage percentage
+- Multiple bar styles: unicode, ascii, braille
+- Progress bars showing usage percentage
 - Time markers (│) showing position in rolling windows
 - Support for 5-hour, 7-day, and Sonnet-specific quotas
 - Works with Claude Code statusline, Waybar, Hyprpanel, and other bars
@@ -137,8 +145,15 @@ Environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CLAUDE_USAGE_BAR_WIDTH` | 30 (statusline) / 8 (bar) | Width of progress bars |
+| `CLAUDE_USAGE_BAR_STYLE` | `unicode` | Bar style: `unicode`, `ascii`, or `braille` |
 | `CLAUDE_USAGE_CACHE_TTL` | 600 (statusline) / 300 (bar) | Cache duration in seconds |
 | `CLAUDE_CREDENTIALS_FILE` | `~/.claude/.credentials.json` | Path to Claude Code credentials |
+
+### Bar Styles
+
+- **unicode** (default): Rich characters `█░│` - best visual quality
+- **ascii**: Basic ASCII `#.|` - works in limited font environments
+- **braille**: Compact braille chars `⣿⡀` - 8 levels per character, no time marker
 
 ## API Details
 
