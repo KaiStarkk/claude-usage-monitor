@@ -1,0 +1,13 @@
+{
+  "custom/claude-usage": {
+    "icon": "󰚩",
+    "execute": "~/.local/bin/claude-usage-bar.sh",
+    "label": "{text}",
+    "tooltip": "{tooltip}",
+    "interval": 60000,
+    "actions": {
+      "onLeftClick": "xdg-open https://claude.ai/settings/usage",
+      "onRightClick": "rm -f /tmp/claude-usage-bar-cache"
+    }
+  }
+}

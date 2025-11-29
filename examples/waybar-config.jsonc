@@ -1,0 +1,39 @@
+// Waybar configuration for Claude Usage Monitor
+// Add this to your waybar config.jsonc
+//
+// 1. Add "custom/claude-usage" to your modules-right (or left/center)
+// 2. Add the custom module definition below
+
+{
+  // Add to your bar modules
+  "modules-right": ["custom/claude-usage", "clock"],
+
+  // Custom module definition
+  "custom/claude-usage": {
+    "exec": "~/.local/bin/claude-usage-bar.sh",
+    "return-type": "json",
+    "interval": 60,
+    "tooltip": true,
+    "on-click": "xdg-open https://claude.ai/settings/usage",
+    "on-click-right": "rm -f /tmp/claude-usage-bar-cache"
+  }
+}
+
+// CSS styling (add to your style.css):
+//
+// #custom-claude-usage {
+//   font-family: "FiraCode Nerd Font", monospace;
+//   padding: 0 10px;
+// }
+//
+// #custom-claude-usage.normal {
+//   color: #a6e3a1;
+// }
+//
+// #custom-claude-usage.warning {
+//   color: #f9e2af;
+// }
+//
+// #custom-claude-usage.critical {
+//   color: #f38ba8;
+// }
