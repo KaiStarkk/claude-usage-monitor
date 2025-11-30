@@ -15,7 +15,10 @@
     "interval": 60,
     "tooltip": true,
     "on-click": "xdg-open https://claude.ai/settings/usage",
-    "on-click-right": "rm -f /tmp/claude-usage-bar-cache"
+    "on-click-middle": "~/.local/bin/claude-usage-cycle.sh display",
+    "on-click-right": "rm -f /tmp/claude-usage-api-cache",
+    "on-scroll-up": "~/.local/bin/claude-usage-cycle.sh style up",
+    "on-scroll-down": "~/.local/bin/claude-usage-cycle.sh style down"
   }
 }
 

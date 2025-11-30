@@ -7,7 +7,10 @@
     "interval": 60000,
     "actions": {
       "onLeftClick": "xdg-open https://claude.ai/settings/usage",
-      "onRightClick": "rm -f /tmp/claude-usage-bar-cache"
+      "onMiddleClick": "~/.local/bin/claude-usage-cycle.sh display",
+      "onRightClick": "rm -f /tmp/claude-usage-api-cache",
+      "onScrollUp": "~/.local/bin/claude-usage-cycle.sh style up",
+      "onScrollDown": "~/.local/bin/claude-usage-cycle.sh style down"
     }
   }
 }

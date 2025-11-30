@@ -52,6 +52,7 @@ Or manually:
 mkdir -p ~/.local/bin
 curl -sL https://raw.githubusercontent.com/KaiStarkk/claude-usage-monitor/main/claude-usage-statusline.sh -o ~/.local/bin/claude-usage-statusline.sh
 curl -sL https://raw.githubusercontent.com/KaiStarkk/claude-usage-monitor/main/claude-usage-bar.sh -o ~/.local/bin/claude-usage-bar.sh
+curl -sL https://raw.githubusercontent.com/KaiStarkk/claude-usage-monitor/main/claude-usage-cycle.sh -o ~/.local/bin/claude-usage-cycle.sh
 chmod +x ~/.local/bin/claude-usage-*.sh
 ```
 
@@ -87,7 +88,10 @@ Add to your waybar config:
     "interval": 60,
     "tooltip": true,
     "on-click": "xdg-open https://claude.ai/settings/usage",
-    "on-click-right": "rm -f /tmp/claude-usage-bar-cache"
+    "on-click-middle": "~/.local/bin/claude-usage-cycle.sh display",
+    "on-click-right": "rm -f /tmp/claude-usage-api-cache",
+    "on-scroll-up": "~/.local/bin/claude-usage-cycle.sh style up",
+    "on-scroll-down": "~/.local/bin/claude-usage-cycle.sh style down"
   }
 }
 ```
@@ -116,7 +120,10 @@ Add to your `modules.json`:
     "interval": 60000,
     "actions": {
       "onLeftClick": "xdg-open https://claude.ai/settings/usage",
-      "onRightClick": "rm -f /tmp/claude-usage-bar-cache"
+      "onMiddleClick": "~/.local/bin/claude-usage-cycle.sh display",
+      "onRightClick": "rm -f /tmp/claude-usage-api-cache",
+      "onScrollUp": "~/.local/bin/claude-usage-cycle.sh style up",
+      "onScrollDown": "~/.local/bin/claude-usage-cycle.sh style down"
     }
   }
 }
@@ -184,7 +191,7 @@ The OAuth token is obtained automatically when you authenticate Claude Code.
 - Check that `~/.claude/.credentials.json` exists and contains `claudeAiOauth.accessToken`
 
 **Bars not updating**
-- Clear the cache: `rm -f /tmp/claude-usage-*`
+- Clear the cache: `rm -f /tmp/claude-usage-api-cache`
 - Check API response: `~/.local/bin/claude-usage-bar.sh`
 
 **Wrong time displayed**

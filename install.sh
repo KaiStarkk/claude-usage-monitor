@@ -44,6 +44,10 @@ echo "  Downloading claude-usage-bar.sh..."
 curl -sL "$REPO_URL/claude-usage-bar.sh" -o "$INSTALL_DIR/claude-usage-bar.sh"
 chmod +x "$INSTALL_DIR/claude-usage-bar.sh"
 
+echo "  Downloading claude-usage-cycle.sh..."
+curl -sL "$REPO_URL/claude-usage-cycle.sh" -o "$INSTALL_DIR/claude-usage-cycle.sh"
+chmod +x "$INSTALL_DIR/claude-usage-cycle.sh"
+
 echo ""
 echo "Installation complete!"
 echo ""
