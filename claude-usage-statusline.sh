@@ -10,7 +10,7 @@
 # Configuration (environment variables):
 #   CLAUDE_USAGE_BAR_WIDTH  - Width of progress bars (default: 30)
 #   CLAUDE_USAGE_BAR_STYLE  - Bar style: ascii, unicode, braille (default: unicode)
-#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 60)
+#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 5)
 #   CLAUDE_CREDENTIALS_FILE - Path to credentials (default: ~/.claude/.credentials.json)
 
 set -euo pipefail
@@ -18,7 +18,7 @@ set -euo pipefail
 # Configuration
 BAR_WIDTH="${CLAUDE_USAGE_BAR_WIDTH:-30}"
 BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
-CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-60}"
+CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-5}"
 CACHE_FILE="/tmp/claude-usage-statusline"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 

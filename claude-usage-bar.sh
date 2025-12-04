@@ -11,7 +11,7 @@
 #   CLAUDE_USAGE_BAR_WIDTH  - Width of progress bars (default: 8)
 #   CLAUDE_USAGE_BAR_STYLE  - Bar style: unicode, ascii, braille, minimal (default: unicode)
 #   CLAUDE_USAGE_DISPLAY    - Display mode: all, 5h, 7d, sonnet (default: all)
-#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 60)
+#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 5)
 #   CLAUDE_CREDENTIALS_FILE - Path to credentials (default: ~/.claude/.credentials.json)
 #
 # Config file: ~/.config/claude-usage/config (overrides env vars)
@@ -24,7 +24,7 @@ set -euo pipefail
 BAR_WIDTH="${CLAUDE_USAGE_BAR_WIDTH:-8}"
 BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
 DISPLAY_MODE="${CLAUDE_USAGE_DISPLAY:-all}"
-CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-60}"
+CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-5}"
 API_CACHE_FILE="/tmp/claude-usage-api-cache"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-usage/config"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
