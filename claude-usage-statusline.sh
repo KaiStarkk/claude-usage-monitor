@@ -10,7 +10,7 @@
 # Configuration (environment variables):
 #   CLAUDE_USAGE_BAR_WIDTH  - Width of progress bars (default: 30)
 #   CLAUDE_USAGE_BAR_STYLE  - Bar style: ascii, unicode, braille (default: unicode)
-#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 600)
+#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 60)
 #   CLAUDE_CREDENTIALS_FILE - Path to credentials (default: ~/.claude/.credentials.json)
 
 set -euo pipefail
@@ -18,7 +18,7 @@ set -euo pipefail
 # Configuration
 BAR_WIDTH="${CLAUDE_USAGE_BAR_WIDTH:-30}"
 BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
-CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-600}"
+CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-60}"
 CACHE_FILE="/tmp/claude-usage-statusline"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
 
@@ -163,7 +163,7 @@ fi
 # Build progress bars
 bar_5h=$(make_bar "$five_hour" "$five_hour_time_pct" "$BAR_WIDTH" "5h")
 bar_7d=$(make_bar "$seven_day" "$seven_day_time_pct" "$BAR_WIDTH" "7d")
-bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "S")
+bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "So")
 
 output="$bar_5h $bar_7d $bar_sn"
 

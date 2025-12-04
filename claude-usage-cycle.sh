@@ -15,9 +15,8 @@ CONFIG_FILE="$CONFIG_DIR/config"
 CACHE_FILE="/tmp/claude-usage-bar-cache"
 
 # Available options
-STYLES=(unicode ascii braille)
-DISPLAYS=(all 5h 7d minimal)
-FORMATS=(bars percent time)
+STYLES=(unicode ascii braille minimal)
+DISPLAYS=(all 5h 7d sonnet)
 
 # Ensure config directory exists
 mkdir -p "$CONFIG_DIR"
@@ -96,12 +95,6 @@ case "$action" in
     write_config "display" "$new"
     echo "Display: $new"
     ;;
-  format)
-    current=$(read_config "format" "bars")
-    new=$(cycle_array "$current" "$direction" "${FORMATS[@]}")
-    write_config "format" "$new"
-    echo "Format: $new"
-    ;;
   reset)
     rm -f "$CONFIG_FILE" "$CACHE_FILE"
     echo "Reset to defaults"
@@ -109,15 +102,13 @@ case "$action" in
   status)
     echo "style=$(read_config style unicode)"
     echo "display=$(read_config display all)"
-    echo "format=$(read_config format bars)"
     ;;
   *)
-    echo "Usage: claude-usage-cycle <style|display|format|reset|status> [up|down]"
+    echo "Usage: claude-usage-cycle <style|display|reset|status> [up|down]"
     echo ""
     echo "Options:"
-    echo "  style   - Cycle: unicode → ascii → braille"
-    echo "  display - Cycle: all → 5h → 7d → minimal"
-    echo "  format  - Cycle: bars → percent → time"
+    echo "  style   - Cycle: unicode → ascii → braille → minimal"
+    echo "  display - Cycle: all → 5h → 7d → sonnet"
     echo "  reset   - Reset all to defaults"
     echo "  status  - Show current settings"
     exit 1

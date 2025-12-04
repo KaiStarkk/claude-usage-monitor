@@ -9,16 +9,14 @@
 #
 # Configuration (environment variables):
 #   CLAUDE_USAGE_BAR_WIDTH  - Width of progress bars (default: 8)
-#   CLAUDE_USAGE_BAR_STYLE  - Bar style: ascii, unicode, braille (default: unicode)
-#   CLAUDE_USAGE_DISPLAY    - Display mode: all, 5h, 7d, minimal (default: all)
-#   CLAUDE_USAGE_FORMAT     - Format: bars, percent, time (default: bars)
-#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 300)
+#   CLAUDE_USAGE_BAR_STYLE  - Bar style: unicode, ascii, braille, minimal (default: unicode)
+#   CLAUDE_USAGE_DISPLAY    - Display mode: all, 5h, 7d, sonnet (default: all)
+#   CLAUDE_USAGE_CACHE_TTL  - Cache TTL in seconds (default: 60)
 #   CLAUDE_CREDENTIALS_FILE - Path to credentials (default: ~/.claude/.credentials.json)
 #
 # Config file: ~/.config/claude-usage/config (overrides env vars)
 #   style=unicode
 #   display=all
-#   format=bars
 
 set -euo pipefail
 
@@ -26,8 +24,7 @@ set -euo pipefail
 BAR_WIDTH="${CLAUDE_USAGE_BAR_WIDTH:-8}"
 BAR_STYLE="${CLAUDE_USAGE_BAR_STYLE:-unicode}"
 DISPLAY_MODE="${CLAUDE_USAGE_DISPLAY:-all}"
-FORMAT="${CLAUDE_USAGE_FORMAT:-bars}"
-CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-300}"
+CACHE_TTL="${CLAUDE_USAGE_CACHE_TTL:-60}"
 API_CACHE_FILE="/tmp/claude-usage-api-cache"
 CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/claude-usage/config"
 CREDS_FILE="${CLAUDE_CREDENTIALS_FILE:-$HOME/.claude/.credentials.json}"
@@ -39,7 +36,6 @@ if [[ -f "$CONFIG_FILE" ]]; then
     case "$key" in
       style) BAR_STYLE="$value" ;;
       display) DISPLAY_MODE="$value" ;;
-      format) FORMAT="$value" ;;
       width) BAR_WIDTH="$value" ;;
     esac
   done < "$CONFIG_FILE"
@@ -181,38 +177,28 @@ render_output() {
     seven_day_remaining="--"
   fi
 
-  # Build progress bars
-  bar_5h=$(make_bar "$five_hour" "$five_hour_time_pct" "$BAR_WIDTH" "5h")
-  bar_7d=$(make_bar "$seven_day" "$seven_day_time_pct" "$BAR_WIDTH" "7d")
-  bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "S")
+  # Build progress bars or minimal display based on style
+  if [[ "$BAR_STYLE" == "minimal" ]]; then
+    # Minimal style: just percentages
+    case "$DISPLAY_MODE" in
+      5h) text="${five_hour}%" ;;
+      7d) text="${seven_day}%" ;;
+      sonnet) text="${sonnet}%" ;;
+      all|*) text="${five_hour}%│${seven_day}%│${sonnet}%" ;;
+    esac
+  else
+    # Bar styles: unicode, ascii, braille
+    bar_5h=$(make_bar "$five_hour" "$five_hour_time_pct" "$BAR_WIDTH" "5h")
+    bar_7d=$(make_bar "$seven_day" "$seven_day_time_pct" "$BAR_WIDTH" "7d")
+    bar_sn=$(make_bar "$sonnet" "$seven_day_time_pct" "$BAR_WIDTH" "So")
 
-  # Build text based on display mode and format
-  case "$FORMAT" in
-    percent)
-      case "$DISPLAY_MODE" in
-        5h) text="5h:${five_hour}%" ;;
-        7d) text="7d:${seven_day}%" ;;
-        minimal) text="${five_hour}/${seven_day}%" ;;
-        all|*) text="5h:${five_hour}% 7d:${seven_day}% S:${sonnet}%" ;;
-      esac
-      ;;
-    time)
-      case "$DISPLAY_MODE" in
-        5h) text="5h:${five_hour_remaining}" ;;
-        7d) text="7d:${seven_day_remaining}" ;;
-        minimal) text="${five_hour_remaining}/${seven_day_remaining}" ;;
-        all|*) text="5h:${five_hour_remaining} 7d:${seven_day_remaining}" ;;
-      esac
-      ;;
-    bars|*)
-      case "$DISPLAY_MODE" in
-        5h) text="$bar_5h" ;;
-        7d) text="$bar_7d" ;;
-        minimal) text="${five_hour}%|${seven_day}%" ;;
-        all|*) text="$bar_5h $bar_7d $bar_sn" ;;
-      esac
-      ;;
-  esac
+    case "$DISPLAY_MODE" in
+      5h) text="$bar_5h" ;;
+      7d) text="$bar_7d" ;;
+      sonnet) text="$bar_sn" ;;
+      all|*) text="$bar_5h $bar_7d $bar_sn" ;;
+    esac
+  fi
 
   # Determine class based on usage thresholds
   if [[ $five_hour -ge 80 ]] || [[ $seven_day -ge 80 ]]; then
@@ -223,13 +209,30 @@ render_output() {
     class="normal"
   fi
 
-  # Build tooltip with current config info
+  # Calculate precise time-to-reset values with right-aligned spacing
+  if [[ -n "$five_hour_reset" && "$five_hour_reset" != "null" ]]; then
+    five_hour_reset_time=$(date -d "$five_hour_reset" "+%H:%M" 2>/dev/null || echo "--:--")
+    five_hour_reset_date=$(date -d "$five_hour_reset" "+%b %d" 2>/dev/null || echo "--")
+  else
+    five_hour_reset_time="--:--"
+    five_hour_reset_date="--"
+  fi
+
+  if [[ -n "$seven_day_reset" && "$seven_day_reset" != "null" ]]; then
+    seven_day_reset_time=$(date -d "$seven_day_reset" "+%H:%M" 2>/dev/null || echo "--:--")
+    seven_day_reset_date=$(date -d "$seven_day_reset" "+%b %d" 2>/dev/null || echo "--")
+  else
+    seven_day_reset_time="--:--"
+    seven_day_reset_date="--"
+  fi
+
+  # Build tooltip with right-aligned time-to-reset
   tooltip="Claude Usage\\n━━━━━━━━━━━━━━━━━━━━\\n"
-  tooltip+="5hr: ${five_hour_full}% (resets $five_hour_reset_fmt, ${five_hour_remaining})\\n"
-  tooltip+="7d:  ${seven_day_full}% (resets $seven_day_reset_fmt, ${seven_day_remaining})\\n"
-  tooltip+="Sonnet 7d: ${sonnet_full}%\\n\\n"
-  tooltip+="Style: $BAR_STYLE | Display: $DISPLAY_MODE | Format: $FORMAT\\n"
-  tooltip+="Scroll=style, Mid=display, Right=refresh, Left=web"
+  tooltip+="5hrs:     ${five_hour_full}% │ $(printf '%4s' "$five_hour_remaining") ($five_hour_reset_time $five_hour_reset_date)\\n"
+  tooltip+="7day:     ${seven_day_full}% │ $(printf '%4s' "$seven_day_remaining") ($seven_day_reset_time $seven_day_reset_date)\\n"
+  tooltip+="Snnt:     ${sonnet_full}% │ $(printf '%4s' "$seven_day_remaining") ($seven_day_reset_time $seven_day_reset_date)\\n\\n"
+  tooltip+="Style: $BAR_STYLE | Display: $DISPLAY_MODE\\n"
+  tooltip+="Mid=style, Scroll=display, Right=refresh, Left=web"
 
   echo "{\"text\": \"$text\", \"tooltip\": \"$tooltip\", \"class\": \"$class\"}"
 }
