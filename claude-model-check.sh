@@ -112,7 +112,8 @@ fi
 # Extract the latest version for the current model type
 latest_model=""
 if [[ -n "$cached_data" ]]; then
-  latest_model=$(echo "$cached_data" | grep "^${model_type}:" | cut -d: -f2)
+  latest_raw=$(echo "$cached_data" | grep "^${model_type}:" | cut -d: -f2)
+  [[ -n "$latest_raw" ]] && latest_model=$(normalize_model "$latest_raw" "$model_type")
 fi
 
 # Compare normalized short forms
