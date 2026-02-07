@@ -25,6 +25,44 @@ error_json() {
   exit 0
 }
 
+# Normalize a model ID to short form: claude-TYPE-MAJOR-MINOR
+# e.g. claude-opus-4-5-20251101 → claude-opus-4-5
+#      claude-opus-4-6          → claude-opus-4-6
+normalize_model() {
+  local id=$1 type=$2
+  local rest="${id#claude-${type}-}"
+  IFS='-' read -ra parts <<< "$rest"
+  local major="${parts[0]}"
+  local minor=0
+  if [[ ${#parts[@]} -ge 2 && ${#parts[1]} -le 2 ]]; then
+    minor="${parts[1]}"
+  fi
+  echo "claude-${type}-${major}-${minor}"
+}
+
+# Extract the latest model for a given type from page content
+# Handles both old format (claude-TYPE-X-Y-YYYYMMDD) and new (claude-TYPE-X-Y)
+extract_latest() {
+  local type=$1 page=$2
+  echo "$page" \
+    | grep -oE "claude-${type}-[0-9]+(-[0-9]+)*" \
+    | grep -vE -- '-v[0-9]+$' \
+    | sort -u \
+    | while IFS= read -r id; do
+        local rest="${id#claude-${type}-}"
+        IFS='-' read -ra parts <<< "$rest"
+        local major="${parts[0]}"
+        local minor=0
+        if [[ ${#parts[@]} -ge 2 && ${#parts[1]} -le 2 ]]; then
+          minor="${parts[1]}"
+        fi
+        printf '%04d %04d claude-%s-%s-%s\n' "$major" "$minor" "$type" "$major" "$minor"
+      done \
+    | sort -k1,1nr -k2,2nr \
+    | head -1 \
+    | awk '{print $3}'
+}
+
 # Read current model from settings
 if [[ ! -f "$SETTINGS_FILE" ]]; then
   error_json "Claude settings not found"
@@ -40,13 +78,15 @@ model_type=""
 if [[ "$current_model" =~ claude-(haiku|sonnet|opus)- ]]; then
   model_type="${BASH_REMATCH[1]}"
 else
-  # Can't determine type, show unknown
   tooltip="Current: $current_model\\nUnable to determine model type"
   echo "{\"text\": \"\", \"tooltip\": \"$tooltip\", \"class\": \"unknown\"}"
   exit 0
 fi
 
-# Check cache for latest model info (stores all three types)
+# Normalize current model to short form for comparison
+current_short=$(normalize_model "$current_model" "$model_type")
+
+# Check cache
 cached_data=""
 if [[ -f "$CACHE_FILE" ]]; then
   cache_age=$(($(date +%s) - $(stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)))
@@ -55,17 +95,15 @@ if [[ -f "$CACHE_FILE" ]]; then
   fi
 fi
 
-# Fetch latest models from Anthropic docs if cache is stale or missing
+# Fetch latest models from Anthropic docs if cache is stale
 if [[ -z "$cached_data" ]]; then
   docs_page=$(curl -sL --max-time 10 "$DOCS_URL" 2>/dev/null)
 
   if [[ -n "$docs_page" ]]; then
-    # Extract latest haiku, sonnet, and opus models (format: claude-TYPE-X-Y-YYYYMMDD)
-    latest_haiku=$(echo "$docs_page" | grep -oE 'claude-haiku-[0-9]+-[0-9]+-[0-9]+' | sort -u | sort -t'-' -k3,3nr -k4,4nr -k5,5nr | head -1)
-    latest_sonnet=$(echo "$docs_page" | grep -oE 'claude-sonnet-[0-9]+-[0-9]+-[0-9]+' | sort -u | sort -t'-' -k3,3nr -k4,4nr -k5,5nr | head -1)
-    latest_opus=$(echo "$docs_page" | grep -oE 'claude-opus-[0-9]+-[0-9]+-[0-9]+' | sort -u | sort -t'-' -k3,3nr -k4,4nr -k5,5nr | head -1)
+    latest_haiku=$(extract_latest "haiku" "$docs_page")
+    latest_sonnet=$(extract_latest "sonnet" "$docs_page")
+    latest_opus=$(extract_latest "opus" "$docs_page")
 
-    # Store all three in cache (one per line)
     cached_data="haiku:$latest_haiku"$'\n'"sonnet:$latest_sonnet"$'\n'"opus:$latest_opus"
     echo "$cached_data" > "$CACHE_FILE"
   fi
@@ -77,12 +115,11 @@ if [[ -n "$cached_data" ]]; then
   latest_model=$(echo "$cached_data" | grep "^${model_type}:" | cut -d: -f2)
 fi
 
-# Compare versions and output result
+# Compare normalized short forms
 if [[ -z "$latest_model" ]]; then
-  # No data available, just show current model
   tooltip="Current: $current_model\\nUnable to check for updates"
   echo "{\"text\": \"\", \"tooltip\": \"$tooltip\", \"class\": \"unknown\"}"
-elif [[ "$current_model" == "$latest_model" ]]; then
+elif [[ "$current_short" == "$latest_model" ]]; then
   tooltip="Current: $current_model\\nLatest: $latest_model\\n✓ Up to date"
   echo "{\"text\": \"\", \"tooltip\": \"$tooltip\", \"class\": \"up-to-date\"}"
 else
