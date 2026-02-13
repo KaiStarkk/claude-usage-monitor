@@ -62,7 +62,7 @@ make_bar() {
     ascii)
       for ((i=0; i<width; i++)); do
         if [[ $i -eq $time_pos ]]; then
-          bar+="|"
+          if [[ $i -lt $filled ]]; then bar+=":"; else bar+="|"; fi
         elif [[ $i -lt $filled ]]; then
           bar+="#"
         else
@@ -94,7 +94,7 @@ make_bar() {
     unicode|*)
       for ((i=0; i<width; i++)); do
         if [[ $i -eq $time_pos ]]; then
-          bar+="│"
+          if [[ $i -lt $filled ]]; then bar+="┃"; else bar+="│"; fi
         elif [[ $i -lt $filled ]]; then
           bar+="█"
         else
